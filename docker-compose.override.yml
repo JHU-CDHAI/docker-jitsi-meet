@@ -72,7 +72,7 @@ services:
       OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview}
       OPENAI_VOICE: ${OPENAI_VOICE:-alloy}
     volumes:
-      - ../../haichat-ai-voice/config-jhu-cdhai/realtime.yaml:/opt/hai-voice-server/data/.config.yaml:ro
+      - ../../haichat-ai/haichat-ai-voice/config-jhu-cdhai/realtime.yaml:/opt/hai-voice-server/data/.config.yaml:ro
     expose:
       - "8765"
     networks:
