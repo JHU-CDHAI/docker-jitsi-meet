@@ -93,6 +93,11 @@ services:
       DIAL_TARGET: jitsi_meet_ai
       INVITE_TOKEN: ${INVITE_TOKEN:-}
       MM_SLASH_TOKEN: ${MM_SLASH_TOKEN:-}
+      # L5.17: invite-api posts type=custom_jitsi messages so the jitsi
+      # plugin renders an embedded iframe (unifying /hai with /jitsi UX).
+      MM_BOT_TOKEN: ${MM_BOT_TOKEN:-}
+      MM_SERVER_URL: ${MM_SERVER_URL:-http://host.docker.internal:8065}
+      JITSI_PUBLIC_URL: ${JITSI_PUBLIC_URL:-https://jitsi.jjluo.com}
       # L5.13: per-room system prompts. JSON map: {"room-name": "prompt"}.
       # Unmatched rooms fall back to jigasi-ai's HAI_ASSISTANT_INSTRUCTIONS.
       ROOM_PROMPTS: ${ROOM_PROMPTS:-{}}
