@@ -1,7 +1,11 @@
 *.bak
 *.swp
-.env*
-docker-compose.override.yml
+.env
+.env.*
+!.env.example
 log-analyser/grafana
 **/.DS_Store
 **/.idea
+
+# JHU-CDHAI fork tracks its own docker-compose.override.yml
+# (upstream ignores it; we want it version-controlled).

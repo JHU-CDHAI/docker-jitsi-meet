@@ -1,0 +1,102 @@
+# Local overrides for JHU-CDHAI HAI-Chat deployment.
+services:
+  # Expose Prosody XMPP C2S port so our bridge can join MUC rooms from host.
+  prosody:
+    ports:
+      - "127.0.0.1:5222:5222"
+
+  # L4.1a: swap transcriber image to our fork.
+  # Build:  docker build -t jigasi-ai:dev -f haichat-calls/jigasi-ai/Dockerfile haichat-calls/jigasi-ai
+  #
+  # L4.5: enable AIGateway alongside the transcriber. Same Java process handles
+  # both `jitsi_meet_transcribe` and `jitsi_meet_ai` DialIq destinations.
+  # Required shell env (e.g. `source /Users/jluo41/Desktop/OpenClawServer/env.sh`):
+  #   OPENAI_API_KEY           OpenAI key with Realtime access
+  #   ENABLE_AI_GATEWAY=true   toggle AI mode on
+  # Optional:
+  #   OPENAI_REALTIME_MODEL    default: gpt-4o-realtime-preview
+  #   OPENAI_VOICE             default: alloy
+  #   HAI_ASSISTANT_INSTRUCTIONS  system prompt override
+  # Replace jitsi/web with our custom image that ships the "Invite HAI"
+  # toolbar button. Built from haichat-calls/jitsi-meet-web (pinned to
+  # upstream tag 9139 to match jitsi-meet-web 1.0.9139-1 in the base image).
+  # Build from haichat-calls/jitsi-meet-web/:
+  #   NODE_OPTIONS=--max-old-space-size=8192 make
+  #   docker build --platform linux/arm64 -t haichat-web:dev -f Dockerfile .
+  web:
+    image: haichat-web:dev
+    volumes:
+      # cont-init script that patches the generated nginx default site to
+      # include /config/nginx/hai.conf (which proxies /hai/invite to
+      # invite-api). The hai.conf itself lives under ${CONFIG}/web/nginx/
+      # and is picked up via the base image's /config bind.
+      - ${CONFIG}/web/hai-init.sh:/etc/cont-init.d/20-hai:ro
+
+  transcriber:
+    image: jigasi-ai:dev
+    environment:
+      # Instructions pass as a proper env var (read via System.getenv in Java)
+      # because JAVA_SYS_PROPS is shell-split on whitespace, which mangles any
+      # multi-word prompt embedded as -Dorg.jitsi.jigasi.ai.INSTRUCTIONS=...
+      HAI_ASSISTANT_INSTRUCTIONS: ${HAI_ASSISTANT_INSTRUCTIONS:-You are HAI assistant, a helpful voice assistant for healthcare AI research at JHU CDHAI. Always reply in English. Keep responses short and conversational, under two sentences.}
+      # L5.10a — repoint jigasi's participant account from the hidden domain
+      # (transcriber@hidden.meet.jitsi) to a regular auth-domain user so the
+      # Jitsi Meet frontend does not filter it out of the participants grid.
+      # The jigasi image's tpl builds $JIGASI_TRANSCRIBER_USER@$XMPP_HIDDEN_DOMAIN,
+      # so we override both to redirect onto auth.meet.jitsi.
+      JIGASI_TRANSCRIBER_USER: ${HAI_ASSISTANT_XMPP_USER:-hai-assistant}
+      XMPP_HIDDEN_DOMAIN: ${HAI_ASSISTANT_XMPP_DOMAIN:-auth.meet.jitsi}
+      JIGASI_TRANSCRIBER_PASSWORD: ${HAI_ASSISTANT_XMPP_PASSWORD}
+      JAVA_SYS_PROPS: >-
+        -Dorg.jitsi.jigasi.ENABLE_AI_GATEWAY=${ENABLE_AI_GATEWAY:-false}
+        -Dorg.jitsi.jigasi.ai.BRAIN=${AI_BRAIN:-openai-direct}
+        -Dorg.jitsi.jigasi.ai.HAI_VOICE_URL=${HAI_VOICE_URL:-ws://haichat-ai-voice:8765/xiaozhi/v1/}
+        -Dorg.jitsi.jigasi.ai.OPENAI_API_KEY=${OPENAI_API_KEY:-}
+        -Dorg.jitsi.jigasi.ai.OPENAI_MODEL=${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview}
+        -Dorg.jitsi.jigasi.ai.OPENAI_VOICE=${OPENAI_VOICE:-alloy}
+      # L5.15: transcript capture — post each utterance as a Mattermost thread reply
+      MM_BOT_TOKEN: ${MM_BOT_TOKEN:-}
+      MM_SERVER_URL: ${MM_SERVER_URL:-http://haichat:8065}
+      MM_TEAM_NAME: ${MM_TEAM_NAME:-cdhai}
+      MM_TRANSCRIPT_CHANNEL: ${MM_TRANSCRIPT_CHANNEL:-}
+
+  # haichat-ai-voice (Python) runs on this same jitsi-meet_default network
+  # so jigasi-ai can reach it as ws://haichat-ai-voice:8765/... when
+  # AI_BRAIN=hai-voice. Mounts the JHU-CDHAI runtime config from the fork.
+  haichat-ai-voice:
+    image: haichat-ai-voice:realtime
+    container_name: haichat-ai-voice
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview}
+      OPENAI_VOICE: ${OPENAI_VOICE:-alloy}
+    volumes:
+      - ../../haichat-ai-voice/config-jhu-cdhai/realtime.yaml:/opt/hai-voice-server/data/.config.yaml:ro
+    expose:
+      - "8765"
+    networks:
+      meet.jitsi:
+
+  # L5.10b: invite-api wraps the Rayo DialIq that summons the AI bot into a
+  # Jitsi room. Called by the Mattermost slash command and by the Jitsi web
+  # URL-param hook. Connects to prosody over the internal meet.jitsi network.
+  invite-api:
+    image: invite-api:dev
+    container_name: invite-api
+    restart: unless-stopped
+    environment:
+      XMPP_HOST: xmpp.meet.jitsi
+      XMPP_PORT: "5222"
+      JICOFO_AUTH_USER: focus
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD}
+      DIAL_TARGET: jitsi_meet_ai
+      INVITE_TOKEN: ${INVITE_TOKEN:-}
+      MM_SLASH_TOKEN: ${MM_SLASH_TOKEN:-}
+      # L5.13: per-room system prompts. JSON map: {"room-name": "prompt"}.
+      # Unmatched rooms fall back to jigasi-ai's HAI_ASSISTANT_INSTRUCTIONS.
+      ROOM_PROMPTS: ${ROOM_PROMPTS:-{}}
+    ports:
+      - "127.0.0.1:8092:8090"
+    networks:
+      meet.jitsi:
