@@ -6,7 +6,7 @@ services:
       - "127.0.0.1:5222:5222"
 
   # L4.1a: swap transcriber image to our fork.
-  # Build:  docker build -t jigasi-ai:dev -f haichat-calls/jigasi-ai/Dockerfile haichat-calls/jigasi-ai
+  # Build:  docker build -t jigasi-ai-gate:dev -f haichat-calls/jigasi-ai-gate/Dockerfile haichat-calls/jigasi-ai-gate
   #
   # L4.5: enable AIGateway alongside the transcriber. Same Java process handles
   # both `jitsi_meet_transcribe` and `jitsi_meet_ai` DialIq destinations.
@@ -33,7 +33,7 @@ services:
       - ${CONFIG}/web/hai-init.sh:/etc/cont-init.d/20-hai:ro
 
   transcriber:
-    image: jigasi-ai:dev
+    image: jigasi-ai-gate:dev
     environment:
       # Instructions pass as a proper env var (read via System.getenv in Java)
       # because JAVA_SYS_PROPS is shell-split on whitespace, which mangles any
