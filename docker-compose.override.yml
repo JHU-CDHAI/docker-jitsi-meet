@@ -47,6 +47,10 @@ services:
       JIGASI_TRANSCRIBER_USER: ${HAI_ASSISTANT_XMPP_USER:-hai-assistant}
       XMPP_HIDDEN_DOMAIN: ${HAI_ASSISTANT_XMPP_DOMAIN:-auth.meet.jitsi}
       JIGASI_TRANSCRIBER_PASSWORD: ${HAI_ASSISTANT_XMPP_PASSWORD}
+      # B2 fallback: until invite-api injects per-room HaiAgentId (B3), every
+      # call resolves to this agent. resolveAgentId() prefers the per-room
+      # DialIq header, then this env var, then sip-comm config.
+      HAI_AGENT_ID: ${HAI_AGENT_ID:-agent_jluo41}
       JAVA_SYS_PROPS: >-
         -Dorg.jitsi.jigasi.ENABLE_AI_GATEWAY=${ENABLE_AI_GATEWAY:-false}
         -Dorg.jitsi.jigasi.ai.BRAIN=${AI_BRAIN:-openai-direct}
@@ -54,29 +58,19 @@ services:
         -Dorg.jitsi.jigasi.ai.OPENAI_API_KEY=${OPENAI_API_KEY:-}
         -Dorg.jitsi.jigasi.ai.OPENAI_MODEL=${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview}
         -Dorg.jitsi.jigasi.ai.OPENAI_VOICE=${OPENAI_VOICE:-alloy}
-      # L5.15: transcript capture — post each utterance as a Mattermost thread reply
-      MM_BOT_TOKEN: ${MM_BOT_TOKEN:-}
+        -Dorg.jitsi.jigasi.ai.ME_AGENT_URL=${ME_AGENT_URL:-http://haichat-me-agent:19120}
+      # L5.15: transcript capture — post each utterance as a Mattermost thread reply.
+      # C-merge: prefer the per-agent bot identity if set; fall back to the
+      # shared MM_BOT_TOKEN so existing deployments don't break.
+      MM_BOT_TOKEN: ${JIGASI_MM_BOT_TOKEN:-${MM_BOT_TOKEN:-}}
       MM_SERVER_URL: ${MM_SERVER_URL:-http://haichat:8065}
       MM_TEAM_NAME: ${MM_TEAM_NAME:-cdhai}
       MM_TRANSCRIPT_CHANNEL: ${MM_TRANSCRIPT_CHANNEL:-}
 
-  # haichat-ai-voice (Python) runs on this same jitsi-meet_default network
-  # so jigasi-ai can reach it as ws://haichat-ai-voice:8765/... when
-  # AI_BRAIN=hai-voice. Mounts the JHU-CDHAI runtime config from the fork.
-  haichat-ai-voice:
-    image: haichat-ai-voice:realtime
-    container_name: haichat-ai-voice
-    restart: unless-stopped
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview}
-      OPENAI_VOICE: ${OPENAI_VOICE:-alloy}
-    volumes:
-      - ../../haichat-ai/haichat-ai-voice/config-jhu-cdhai/realtime.yaml:/opt/hai-voice-server/data/.config.yaml:ro
-    expose:
-      - "8765"
-    networks:
-      meet.jitsi:
+  # haichat-ai-voice service has moved → haichat-ai/haichat-ai-voice/docker-compose.yml
+  # (the brain owns its own runtime declaration). It is composed in via
+  # COMPOSE_FILE in this directory's .env and attaches to meet.jitsi as an
+  # external network so jigasi can still reach it at ws://haichat-ai-voice:8765/.
 
   # L5.10b: invite-api wraps the Rayo DialIq that summons the AI bot into a
   # Jitsi room. Called by the Mattermost slash command and by the Jitsi web
